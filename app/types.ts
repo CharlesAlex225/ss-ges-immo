@@ -22,3 +22,16 @@ export enum TicketPriority {
   HIGH = 'HIGH',
   URGENT = 'URGENT'
 }
+// app/types.ts
+
+// ... keep your Ticket types here ...
+
+export interface User {
+  id: string;
+  name: string;
+  role: UserRole;
+  email?: string;
+  phone?: string;
+}
+
+// ... keep your Enums (UserRole, TicketPriority) here ...
