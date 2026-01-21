@@ -1,14 +1,9 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User, UserRole } from '../app/types';
+import { User } from '../app/types';
 import { useRouter } from 'next/navigation';
-
-// --- MOCK USERS (We use these for testing until we connect a Users table) ---
-const MOCK_DB: User[] = [
-  { id: "u1", name: "Alice Locataire", role: UserRole.TENANT, phone: "+33612345678" },
-  { id: "admin1", name: "Super Admin", role: UserRole.ADMIN, phone: "+33600000000" } // Admin phone
-];
+import { supabase } from '@/lib/supabaseClient';
 
 interface AuthContextType {
   user: User | null;
@@ -27,7 +22,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const router = useRouter();
 
   useEffect(() => {
-    // Check if user is already logged in (saved in browser)
     const storedUser = localStorage.getItem('ss_user');
     if (storedUser) {
       setUser(JSON.parse(storedUser));
@@ -36,18 +30,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const requestOTP = async (identifier: string) => {
-    // Check if user exists in our Mock List
-    const found = MOCK_DB.find(u => u.phone === identifier || u.email === identifier);
-    
-    if (!found) {
-      return { success: false, error: "Compte introuvable. (Utilisez +33612345678 pour tester)" };
+    console.log("🔍 Attempting login for:", identifier);
+
+    // UPDATED: Now looking at the 'people' table
+    let query = supabase.from('people').select('*');
+
+    if (identifier.includes('@')) {
+      query = query.eq('email', identifier);
+    } else {
+      query = query.eq('phone', identifier);
+    }
+
+    const { data, error } = await query.single();
+
+    console.log("📥 Supabase Result:", data);
+    console.log("❌ Supabase Error:", error);
+
+    if (error || !data) {
+      return { success: false, error: "Compte introuvable. (Vérifiez la table 'people')" };
     }
     
-    // Generate Fake OTP
-    const otp = "123456"; // Hardcoded for easy testing!
+    const otp = "123456"; 
     pendingOTPs.set(identifier, otp);
     
-    console.log(`[OTP] Code pour ${identifier}: ${otp}`);
+    console.log(`✅ User found: ${data.name}. OTP: ${otp}`);
     return { success: true, otp }; 
   };
 
@@ -55,12 +61,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const correctOTP = pendingOTPs.get(identifier);
     
     if (correctOTP === otp) {
-      const found = MOCK_DB.find(u => u.phone === identifier || u.email === identifier);
-      if (found) {
-        setUser(found);
-        localStorage.setItem('ss_user', JSON.stringify(found));
+      // UPDATED: Now looking at the 'people' table
+      let query = supabase.from('people').select('*');
+      
+      if (identifier.includes('@')) {
+        query = query.eq('email', identifier);
+      } else {
+        query = query.eq('phone', identifier);
+      }
+
+      const { data } = await query.single();
+
+      if (data) {
+        const loggedUser: User = {
+            id: data.id,
+            name: data.name,
+            role: data.role,
+            phone: data.phone,
+            email: data.email
+        };
+        setUser(loggedUser);
+        localStorage.setItem('ss_user', JSON.stringify(loggedUser));
         pendingOTPs.delete(identifier);
-        router.push('/'); // Redirect to Dashboard
+        router.push('/'); 
         return { success: true };
       }
     }
