@@ -4,10 +4,13 @@ import { useState } from "react";
 import Sidebar from "../components/Sidebar";
 import { Send, ArrowLeft } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation"; // To redirect after saving
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/authContext"; // <--- 1. Import Auth
 
 export default function NewTicketPage() {
   const router = useRouter();
+  const { user } = useAuth(); // <--- 2. Get the logged-in user
+  
   const [messages, setMessages] = useState([
     { role: "model", text: "Bonjour! Je suis l'assistant de maintenance. Quel problème rencontrez-vous ?" },
   ]);
@@ -17,27 +20,25 @@ export default function NewTicketPage() {
   const sendMessage = async () => {
     if (!input.trim()) return;
 
-    // 1. Show user message
     const newMessages = [...messages, { role: "user", text: input }];
     setMessages(newMessages);
     setInput("");
     setIsLoading(true);
 
     try {
-      // 2. Send to our API (The Brain)
+      // 3. Send the message AND the User ID
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: input }),
+        body: JSON.stringify({ 
+            message: input,
+            userId: user?.id, // <--- Attaching the ID tag!
+            userName: user?.name 
+        }),
       });
 
       const data = await response.json();
-
-      // 3. Show AI response
       setMessages([...newMessages, { role: "model", text: data.text }]);
-      
-      // OPTIONAL: If the AI says it saved the ticket, we could redirect back to the dashboard
-      // shortly after. For now, we stay here so the user can read the reply.
       
     } catch (error) {
       console.error("Error:", error);
@@ -50,24 +51,20 @@ export default function NewTicketPage() {
   return (
     <div className="flex bg-slate-50 min-h-screen font-sans">
       <Sidebar />
-
       <main className="flex-1 ml-64 p-8 flex flex-col h-screen">
-        
-        {/* Header with Back Button */}
         <div className="mb-6 flex items-center gap-4">
             <Link href="/" className="p-2 bg-white rounded-full hover:bg-slate-100 border border-slate-200 transition">
                 <ArrowLeft size={20} className="text-slate-600"/>
             </Link>
             <div>
                 <h1 className="text-2xl font-black text-slate-900">Nouvelle Demande</h1>
-                <p className="text-slate-500 text-sm">Décrivez votre problème à l'assistant.</p>
+                <p className="text-slate-500 text-sm">
+                    {user ? `Connecté en tant que ${user.name}` : "Mode Invité"}
+                </p>
             </div>
         </div>
 
-        {/* Chat Container */}
         <div className="flex-1 bg-white rounded-3xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
-            
-            {/* Messages Area */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
                 {messages.map((msg, index) => (
                 <div key={index} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
@@ -83,7 +80,6 @@ export default function NewTicketPage() {
                 {isLoading && <div className="text-slate-400 text-xs ml-4 italic animate-pulse">Analyse en cours...</div>}
             </div>
 
-            {/* Input Area */}
             <div className="p-4 border-t border-slate-100 bg-slate-50">
                 <div className="flex gap-2">
                     <input
@@ -104,7 +100,6 @@ export default function NewTicketPage() {
                     </button>
                 </div>
             </div>
-
         </div>
       </main>
     </div>

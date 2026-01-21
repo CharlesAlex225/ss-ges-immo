@@ -2,44 +2,45 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Ticket, UserRole, TicketPriority } from '../types';
+import { Ticket, TicketPriority, UserRole } from '../types';
 import { StatusBadge } from './StatusBadge';
-import { supabase } from '@/lib/supabaseClient'; // <--- Importing the connection
-
-// We keep a mock user for now (since we haven't built Login yet)
-const CURRENT_USER = {
-  id: "u1",
-  name: "Admin Propriétaire",
-  role: UserRole.ADMIN
-};
+import { supabase } from '@/lib/supabaseClient';
+import { useAuth } from '@/lib/authContext'; // <--- Import the "Brain"
 
 const Dashboard: React.FC = () => {
-  const user = CURRENT_USER;
+  const { user } = useAuth(); // <--- Get the REAL logged-in user
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // This "Effect" runs when the page loads
   useEffect(() => {
     async function fetchTickets() {
-      // 1. Ask Supabase for all tickets
-      const { data, error } = await supabase
+      if (!user) return; // Don't fetch if no one is logged in
+
+      let query = supabase
         .from('tickets')
         .select('*')
         .order('created_at', { ascending: false });
 
+      // SECURITY LOGIC:
+      // If NOT an Admin, only show tickets that belong to ME.
+      if (user.role !== UserRole.ADMIN) {
+        query = query.eq('user_id', user.id);
+      }
+
+      const { data, error } = await query;
+
       if (error) {
         console.error('Error fetching tickets:', error);
       } else if (data) {
-        // 2. Convert database data to Dashboard format
         const formattedTickets: Ticket[] = data.map((t: any) => ({
           id: t.id.toString(),
-          title: t.category || "Maintenance Request", // Use category as title
+          title: t.title || t.category || "Sans titre",
           description: t.description,
           status: t.status === 'open' ? 'OPEN' : 'CLOSED',
           priority: (t.urgency?.toUpperCase() as TicketPriority) || 'MEDIUM',
           category: t.category,
           createdAt: t.created_at,
-          userId: "unknown"
+          userId: t.user_id
         }));
         setTickets(formattedTickets);
       }
@@ -47,23 +48,29 @@ const Dashboard: React.FC = () => {
     }
 
     fetchTickets();
-  }, []);
+  }, [user]); // <--- Re-run this whenever the user changes
 
   const getGreeting = () => {
     const hour = new Date().getHours();
-    if (hour < 18) return "Bonjour";
-    return "Bonsoir";
+    return hour < 18 ? "Bonjour" : "Bonsoir";
   };
+
+  if (!user) return null; // Wait for login
 
   return (
     <div className="space-y-8 p-8 bg-slate-50 min-h-screen">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-3xl font-black text-slate-900 tracking-tight">{getGreeting()}, {user.name} 👋</h2>
-          <p className="text-slate-500 mt-1">Aperçu général de l'activité de votre parc immobilier.</p>
+          <h2 className="text-3xl font-black text-slate-900 tracking-tight">
+            {getGreeting()}, {user.name} 👋
+          </h2>
+          <p className="text-slate-500 mt-1">
+            {user.role === UserRole.ADMIN 
+              ? "Vue d'ensemble de tout le parc immobilier." 
+              : "Suivi de vos demandes personnelles."}
+          </p>
         </div>
         
-        {/* We will make this button work in the next step! */}
         <Link href="/new-ticket" className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-black text-sm transition shadow-lg shadow-blue-500/20 text-center flex items-center gap-2">
             <span>+</span> Nouvelle Demande
         </Link>
@@ -80,21 +87,26 @@ const Dashboard: React.FC = () => {
            <span className="text-4xl font-black text-blue-600">{tickets.filter(t => t.status === 'IN_PROGRESS').length}</span>
         </div>
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Total Archivé</span>
+           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Archivés</span>
            <span className="text-4xl font-black text-slate-300">{tickets.filter(t => t.status === 'CLOSED').length}</span>
         </div>
       </div>
 
       <div className="space-y-4">
-        <div className="flex justify-between items-center px-1">
-          <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">Activité Récente</h3>
-        </div>
+        <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">
+           {user.role === UserRole.ADMIN ? "Activité Récente (Tous)" : "Mes Dernières Demandes"}
+        </h3>
         
         <div className="grid gap-4">
           {isLoading ? (
              <div className="p-8 text-center text-slate-400">Chargement...</div>
           ) : tickets.length === 0 ? (
-             <div className="p-8 text-center text-slate-400 italic">Aucun ticket trouvé.</div>
+             <div className="p-12 text-center border-2 border-dashed border-slate-200 rounded-3xl">
+                <p className="text-slate-400 font-bold mb-2">Aucune demande trouvée</p>
+                <Link href="/new-ticket" className="text-blue-600 text-sm font-bold hover:underline">
+                    Créer votre première demande &rarr;
+                </Link>
+             </div>
           ) : (
             tickets.map(ticket => (
               <div key={ticket.id} className="bg-white p-5 rounded-3xl border border-slate-200 hover:border-blue-300 hover:shadow-md transition-all group relative overflow-hidden cursor-pointer">
